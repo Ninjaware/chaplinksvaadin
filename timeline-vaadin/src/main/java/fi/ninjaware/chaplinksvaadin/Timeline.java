@@ -6,7 +6,9 @@ import fi.ninjaware.chaplinksvaadin.gwt.client.timeline.VTimeline;
 
 import com.vaadin.terminal.PaintException;
 import com.vaadin.terminal.PaintTarget;
+import com.vaadin.terminal.Resource;
 import com.vaadin.ui.AbstractComponent;
+import com.vaadin.ui.Alignment;
 import com.vaadin.ui.ClientWidget;
 import static fi.ninjaware.chaplinksvaadin.gwt.shared.Shared.*;
 import java.util.ArrayList;
@@ -35,13 +37,21 @@ public class Timeline extends AbstractComponent {
      */
     public enum EventFields {
 
-        START,
-        END,
-        CONTENT,
-        GROUP,
-        CLASSNAME,
-        EDITABLE,
-        TYPE;
+        START(Date.class),
+        END(Date.class),
+        CONTENT(String.class),
+        GROUP(String.class),
+        CLASSNAME(String.class),
+        EDITABLE(Boolean.class),
+        TYPE(EventType.class),
+        ICON(Resource.class),
+        ICON_ALIGNMENT(Alignment.class);
+
+        private EventFields(Class type) {
+            this.type = type;
+        }
+
+        private Class type;
 
     }
 
@@ -151,6 +161,21 @@ public class Timeline extends AbstractComponent {
      */
     private Object eventTypePropertyId = EventFields.TYPE;
 
+    /**
+     * Event icon property id in the <code>events</code> container. Type:
+     * com.vaadin.terminal.Resource Required: No
+     */
+    private Object eventIconPropertyId = EventFields.ICON;
+
+    /**
+     * Event icon alignment property id in the <code>events</code> container. If
+     * the container has <code>eventIconPropertyId</code> property, but not the
+     * <code>eventIconAlignmentPropertyId</code> property, the default value of
+     * icon alignment will be Alignment.TOP_CENTER. Type:
+     * com.vaadin.ui.Alignment Required: No
+     */
+    private Object eventIconAlignmentPropertyId = EventFields.ICON_ALIGNMENT;
+
     // </editor-fold>
     /**
      * Event data container.
@@ -168,6 +193,20 @@ public class Timeline extends AbstractComponent {
      */
     private final Map<Object, String> serializedFields
             = new LinkedHashMap<Object, String>();
+
+    /**
+     * A map for the event icons. Key = <code>events</code> container id, Value
+     * = Icon resource.
+     */
+    private final Map<Object, Resource> eventIcons
+            = new LinkedHashMap<Object, Resource>();
+
+    /**
+     * A map for the event icon alignments. Key = <code>events</code> container
+     * id, Value = Icon alignment.
+     */
+    private final Map<Object, Alignment> eventIconAlignments
+            = new LinkedHashMap<Object, Alignment>();
 
     /**
      * True, when the required JavaScript has been loaded.
@@ -188,10 +227,12 @@ public class Timeline extends AbstractComponent {
 
         serializedFields.clear();
 
+        boolean iconFieldExists = false, iconAlignmentFieldExists = false;
+
         // Required fields
-        serializedFields.put(eventStartPropertyId, 
+        serializedFields.put(eventStartPropertyId,
                 EventFields.START.toString());
-        serializedFields.put(eventContentPropertyId, 
+        serializedFields.put(eventContentPropertyId,
                 EventFields.CONTENT.toString());
 
         // Optional fields
@@ -215,6 +256,12 @@ public class Timeline extends AbstractComponent {
         if (propIds.contains(eventTypePropertyId)) {
             serializedFields.put(eventTypePropertyId,
                     EventFields.TYPE.toString());
+        }
+        if (propIds.contains(eventIconPropertyId)) {
+            iconFieldExists = true;
+        }
+        if (propIds.contains(eventIconAlignmentPropertyId)) {
+            iconAlignmentFieldExists = true;
         }
 
         Set<Object> containerProps = serializedFields.keySet();
@@ -265,7 +312,26 @@ public class Timeline extends AbstractComponent {
                             ? EventType.getDefault().value()
                             : eventType.value());
                 } else {
+                    // TODO: Escape the string. It could contain the delimiter character.
                     srlzd.append(property == null ? "" : property.toString());
+                }
+            }
+
+            // Icons and icon alignments
+            if (iconFieldExists) {
+                Resource icon = (Resource) item
+                        .getItemProperty(eventIconPropertyId).getValue();
+
+                if (icon != null) {
+                    eventIcons.put(id, icon);
+                }
+            } 
+            if (iconAlignmentFieldExists) {
+                Alignment alignment = (Alignment) item
+                        .getItemProperty(eventIconAlignmentPropertyId)
+                        .getValue();
+                if (alignment != null) {
+                    eventIconAlignments.put(id, alignment);
                 }
             }
 
@@ -289,8 +355,18 @@ public class Timeline extends AbstractComponent {
         target.addVariable(this, EVENTS,
                 serializedEvents.toArray(new String[serializedEvents.size()]));
 
-        serializedEvents.clear();
+        for (Object id : eventIcons.keySet()) {
+            target.addAttribute(ICON_PREFIX + id, eventIcons.get(id));
+        }
 
+        for (Object id : eventIconAlignments.keySet()) {
+            target.addAttribute(ICONALIGN_PREFIX + id,
+                    eventIconAlignments.get(id).getBitMask());
+        }
+
+        serializedEvents.clear();
+        eventIcons.clear();
+        eventIconAlignments.clear();
     }
 
     /**
@@ -307,27 +383,12 @@ public class Timeline extends AbstractComponent {
                 = new ArrayList<EventContainerInvalidException>();
 
         Collection<?> propIds = events.getContainerPropertyIds();
+
+        // Check that required fields are in the container.
         if (!propIds.contains(eventStartPropertyId)) {
             String m = "Event start property '%s' not found in the container.";
             exceptions.add(new EventContainerInvalidException(
                     String.format(m, eventStartPropertyId)));
-
-        } else if (!events.getType(eventStartPropertyId)
-                .isAssignableFrom(Date.class)) {
-            String m = "Event start property '%s' is not assignable from %s";
-            exceptions.add(new EventContainerInvalidException(
-                    String.format(m, eventStartPropertyId,
-                            Date.class.getCanonicalName())));
-
-        }
-
-        if (propIds.contains(eventEndPropertyId)
-                && !events.getType(eventEndPropertyId)
-                .isAssignableFrom(Date.class)) {
-            String m = "Event end property '%s' is not assignable from %s";
-            exceptions.add(new EventContainerInvalidException(
-                    String.format(m, eventEndPropertyId,
-                            Date.class.getCanonicalName())));
 
         }
 
@@ -338,24 +399,25 @@ public class Timeline extends AbstractComponent {
                     String.format(m, eventContentPropertyId)));
         }
 
-        if (propIds.contains(eventEditablePropertyId)
-                && !events.getType(eventEditablePropertyId)
-                .isAssignableFrom(Boolean.class)) {
-            String m = "Event editable property '%s' is not assignable from %s";
-            exceptions.add(new EventContainerInvalidException(
-                    String.format(m, eventContentPropertyId,
-                            Boolean.class.getCanonicalName())));
-        }
+        // Check that all the data types match.
+        Map<Object, EventFields> propertyFieldMap 
+                = new LinkedHashMap<Object, EventFields>();
+        propertyFieldMap.put(eventStartPropertyId, EventFields.START);
+        propertyFieldMap.put(eventEndPropertyId, EventFields.END);
+        propertyFieldMap.put(eventEditablePropertyId, EventFields.EDITABLE);
+        propertyFieldMap.put(eventTypePropertyId, EventFields.TYPE);
+        propertyFieldMap.put(eventIconPropertyId, EventFields.ICON);
+        propertyFieldMap.put(eventIconAlignmentPropertyId, 
+                EventFields.ICON_ALIGNMENT);
 
-        if (propIds.contains(eventTypePropertyId)
-                && !events.getType(eventTypePropertyId)
-                .isAssignableFrom(EventType.class)) {
-            String m = "Event type property '%s' is not assignable from %s";
-            exceptions.add(new EventContainerInvalidException(
-                    String.format(m, eventContentPropertyId,
-                            EventType.class.getCanonicalName())));
+        for(Object propertyId : propertyFieldMap.keySet()) {
+            try {
+                validateProperty(propertyId, propertyFieldMap.get(propertyId));
+            } catch(EventContainerInvalidException ex) {
+                exceptions.add(ex);
+            }
         }
-
+        
         if (!exceptions.isEmpty()) {
             throw new EventContainerInvalidException(
                     "Found one or more problems in the event container. "
@@ -364,8 +426,29 @@ public class Timeline extends AbstractComponent {
         }
     }
 
+    /**
+     * Validate a single property by checking its type.
+     *
+     * @param propertyId The property id in the <code>events</code> container.
+     * @param field The corresponding event field enumerable.
+     * @throws
+     * fi.ninjaware.chaplinksvaadin.Timeline.EventContainerInvalidException when
+     * the container contains <code>propertyId</code> but it's of wrong type.
+     */
+    private void validateProperty(Object propertyId, EventFields field) throws
+            EventContainerInvalidException {
+        Collection<?> propIds = events.getContainerPropertyIds();
+        if (propIds.contains(propertyId)
+                && !events.getType(propertyId).isAssignableFrom(field.type)) {
+            String m = "Event property '%s' is not assignable from %s";
+            throw new EventContainerInvalidException(
+                    String.format(m, propertyId, field.type));
+        }
+    }
+
     @Override
-    public void changeVariables(Object source, Map<String, Object> variables) {
+    public void changeVariables(Object source, Map<String, Object> variables
+    ) {
         if (variables.containsKey(JS_INITIALIZED)) {
             log.debug("Google Visualization JavaScript loaded.");
             js_initialized = (Boolean) variables.get(JS_INITIALIZED);
@@ -496,6 +579,28 @@ public class Timeline extends AbstractComponent {
 
         this.eventTypePropertyId = eventTypePropertyId;
         requestRepaint();
+    }
+
+    public Object getEventIconPropertyId() {
+        return eventIconPropertyId;
+    }
+
+    public void setEventIconPropertyId(Object eventIconPropertyId) {
+        if (eventIconPropertyId == null) {
+            throw new NullPointerException("Property can't be null");
+        }
+        this.eventIconPropertyId = eventIconPropertyId;
+    }
+
+    public Object getEventIconAlignmentPropertyId() {
+        return eventIconAlignmentPropertyId;
+    }
+
+    public void setEventIconAlignmentPropertyId(Object eventIconAlignmentPropertyId) {
+        if (eventIconAlignmentPropertyId == null) {
+            throw new NullPointerException("Property can't be null");
+        }
+        this.eventIconAlignmentPropertyId = eventIconAlignmentPropertyId;
     }
 
     // </editor-fold>

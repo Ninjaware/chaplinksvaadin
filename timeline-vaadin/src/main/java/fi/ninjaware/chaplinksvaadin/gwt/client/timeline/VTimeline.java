@@ -1,16 +1,22 @@
 package fi.ninjaware.chaplinksvaadin.gwt.client.timeline;
 
 import com.chap.links.client.Timeline;
+import com.google.gwt.dom.client.Element;
 import com.vaadin.terminal.gwt.client.ApplicationConnection;
 import com.vaadin.terminal.gwt.client.Paintable;
 import com.vaadin.terminal.gwt.client.UIDL;
 import com.google.gwt.i18n.client.DateTimeFormat;
+import com.google.gwt.user.client.DOM;
 import com.google.gwt.visualization.client.AbstractDataTable.ColumnType;
 import com.google.gwt.visualization.client.DataTable;
 import com.google.gwt.visualization.client.VisualizationUtils;
 import com.vaadin.terminal.gwt.client.VConsole;
+import com.vaadin.terminal.gwt.client.ui.AlignmentInfo;
 import static fi.ninjaware.chaplinksvaadin.gwt.shared.Shared.*;
 import java.util.Date;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Set;
 
 public class VTimeline extends Timeline implements Paintable {
 
@@ -46,6 +52,12 @@ public class VTimeline extends Timeline implements Paintable {
     }
 
     /**
+     * The default icon position.
+     */
+    private static final AlignmentInfo defaultIconAlignment
+            = new AlignmentInfo(AlignmentInfo.CENTER, AlignmentInfo.TOP);
+
+    /**
      * The client side widget identifier
      */
     protected String paintableId;
@@ -79,7 +91,7 @@ public class VTimeline extends Timeline implements Paintable {
 
     private void init() {
         DateTimeFormat dtf = DateTimeFormat.getFormat("yyyy-MM-dd");
-        
+
         Options options = Timeline.Options.create();
         options.setStyle(Timeline.Options.STYLE.BOX);
         options.setStart(dtf.parse("2014-01-01"));
@@ -132,45 +144,140 @@ public class VTimeline extends Timeline implements Paintable {
         String height_units = uidl.getStringAttribute(HEIGHT_UNITS);
         setHeight(height + height_units);
 
+        // Icons and icon positions
+        Set<String> attributeNames = uidl.getAttributeNames();
+        Map<String, String> icons = new HashMap<String, String>();
+        Map<String, AlignmentInfo> iconAlignments
+                = new HashMap<String, AlignmentInfo>();
+        for (String attributeName : attributeNames) {
+            if (attributeName.startsWith(ICON_PREFIX)) {
+                String id = attributeName.substring(ICON_PREFIX.length());
+                String icon = uidl.getStringAttribute(ICON_PREFIX + id);
+
+                icons.put(id, icon);
+            } else if (attributeName.startsWith(ICONALIGN_PREFIX)) {
+                String id = attributeName.substring(ICONALIGN_PREFIX.length());
+                int alignBits = uidl.getIntAttribute(ICONALIGN_PREFIX + id);
+
+                iconAlignments.put(id, new AlignmentInfo(alignBits));
+            }
+        }
+
         // Events
         String[] events = uidl.getStringArrayVariable(EVENTS);
         if (events.length > 0) {
             String[] fields = uidl.getStringArrayAttribute(FIELDS);
-            DataTable dt = DataTable.create();
-            for (String field : fields) {
-                EventFields eventField = EventFields.valueOf(field);
-                dt.addColumn(eventField.type, eventField.jsId);
-            }
-
-            dt.addRows(events.length);
-
-            // Iterate the events
-            for (int i = 0; i < events.length; i++) {
-                String[] event = events[i].split("\\|");
-
-                int dtCol = 0;
-                // Iterate the event fields. Ignore the first field (=id).
-                for (int j = 1; j < event.length; j++) {
-                    ColumnType type = dt.getColumnType(dtCol);
-                    if (!event[j].isEmpty()) {
-                        if (type.equals(ColumnType.DATE)) {
-                            dt.setValue(i, dtCol, new Date(Long.parseLong(event[j])));
-                        } else if (type.equals(ColumnType.BOOLEAN)) {
-                            dt.setValue(i, dtCol, Boolean.parseBoolean(event[j]));
-                        } else {
-                            dt.setValue(i, dtCol, event[j]);
-                        }
-                    }
-
-                    dtCol++;
-                }
-            }
-
+            DataTable dt = generateData(fields, events, icons, iconAlignments);
             setData(dt);
         }
 
         redraw();
 
+    }
+
+    /**
+     * Generate the timeline data from the UIDL data.
+     *
+     * @param fields The fields used in <code>events</code>.
+     * @param events The timeline events.
+     * @param icons A map of icon id's and icon UIDL URIs.
+     * @param iconAlignments A map of icon id's and icon alignments.
+     * @return A DataTable of events.
+     */
+    private DataTable generateData(String[] fields, String[] events,
+            Map<String, String> icons,
+            Map<String, AlignmentInfo> iconAlignments) {
+        DataTable dt = DataTable.create();
+
+        int contentCol = -1;
+        for (String field : fields) {
+            EventFields eventField = EventFields.valueOf(field);
+            int col = dt.addColumn(eventField.type, eventField.jsId);
+            if (eventField.equals(EventFields.CONTENT)) {
+                contentCol = col;
+            }
+        }
+
+        dt.addRows(events.length);
+
+        // Iterate the events
+        for (int i = 0; i < events.length; i++) {
+            String[] event = events[i].split("\\|");
+
+            int dtCol = 0;
+
+            String id = event[0];
+
+            // Iterate the event fields. Ignore the first field (=id).
+            for (int j = 1; j < event.length; j++) {
+                ColumnType type = dt.getColumnType(dtCol);
+
+                if (!event[j].isEmpty()) {
+                    if (type.equals(ColumnType.DATE)) {
+                        dt.setValue(i, dtCol, new Date(Long.parseLong(event[j])));
+                    } else if (type.equals(ColumnType.BOOLEAN)) {
+                        dt.setValue(i, dtCol, Boolean.parseBoolean(event[j]));
+                    } else {
+                        dt.setValue(i, dtCol, event[j]);
+                    }
+                }
+
+                dtCol++;
+            }
+
+            if (icons.containsKey(id)) {
+                String iconUri = client.translateVaadinUri(icons.get(id));
+                String content = dt.getValueString(i, contentCol);
+
+                AlignmentInfo iconAlign = iconAlignments.containsKey(id)
+                        ? iconAlignments.get(id)
+                        : defaultIconAlignment;
+
+                Element icon = DOM.createImg();
+                icon.setPropertyString("src", iconUri);
+                Element helperSpan = DOM.createSpan();
+                helperSpan.appendChild(icon);
+
+                StringBuilder style = new StringBuilder();
+
+                if(iconAlign.isLeft() || iconAlign.isHorizontalCenter()) {
+                    style.append("margin-right: auto;");
+                }
+                if(iconAlign.isRight() || iconAlign.isHorizontalCenter()) {
+                    style.append("margin-left: auto;");
+                }
+                
+                style.append("vertical-align: ")
+                        .append(iconAlign.getVerticalAlignment())
+                        .append(";");
+
+                if (iconAlign.isBottom() || iconAlign.isTop()) {
+                    style.append("display: block;");
+                }
+
+                icon.setPropertyString("style", style.toString());
+
+                String value;
+                
+                /*
+                 I = Icon first
+                 C = Text first
+                 III
+                 IIC
+                 CCC
+                 */
+                if (iconAlign.isBottom()
+                        || (iconAlign.isRight() && !iconAlign.isTop())) {
+                    value = content + helperSpan.getInnerHTML();
+                } else {
+                    value = helperSpan.getInnerHTML() + content;
+                }
+
+                dt.setValue(i, contentCol, value);
+            }
+        }
+
+        return dt;
     }
 
 }

@@ -3,7 +3,11 @@ package fi.ninjaware.chaplinksvaadin.example;
 import com.vaadin.Application;
 import com.vaadin.data.Item;
 import com.vaadin.data.util.IndexedContainer;
+import com.vaadin.terminal.ExternalResource;
+import com.vaadin.terminal.Resource;
 import com.vaadin.terminal.Sizeable;
+import com.vaadin.terminal.ThemeResource;
+import com.vaadin.ui.Alignment;
 import com.vaadin.ui.Button;
 import com.vaadin.ui.Window;
 import fi.ninjaware.chaplinksvaadin.Timeline;
@@ -28,6 +32,8 @@ public class ExampleApplication extends Application {
 
     @Override
     public void init() {
+        setTheme("example");
+        
         window = new Window("Widget Test");
         setMainWindow(window);
 
@@ -45,6 +51,8 @@ public class ExampleApplication extends Application {
                 c.addContainerProperty(EventFields.END, Date.class, null);
                 c.addContainerProperty(EventFields.CONTENT, String.class, null);
                 c.addContainerProperty(EventFields.TYPE, EventType.class, null);
+                c.addContainerProperty(EventFields.ICON, Resource.class, null);
+                c.addContainerProperty(EventFields.ICON_ALIGNMENT, Alignment.class, null);
 
                 Calendar cal = GregorianCalendar.getInstance();
                 cal.set(2014, 0, 5);
@@ -70,6 +78,10 @@ public class ExampleApplication extends Application {
                             .setValue(cal.getTime());
                     item.getItemProperty(EventFields.CONTENT)
                             .setValue("Something fun");
+                    item.getItemProperty(EventFields.ICON)
+                            .setValue(new ThemeResource("air_plane_airport_2.png"));
+                    item.getItemProperty(EventFields.ICON_ALIGNMENT)
+                            .setValue(Alignment.BOTTOM_LEFT);
                 }
 
                 {
@@ -81,7 +93,12 @@ public class ExampleApplication extends Application {
                             .setValue("Single day event");
                     item.getItemProperty(EventFields.TYPE)
                             .setValue(EventType.BOX);
+                    item.getItemProperty(EventFields.ICON)
+                            .setValue(new ThemeResource("taxi.png"));
+                    item.getItemProperty(EventFields.ICON_ALIGNMENT)
+                            .setValue(Alignment.MIDDLE_LEFT);
                 }
+                
                 try {
                     tl.setEventDataSource(c);
                 } catch (Timeline.EventContainerInvalidException exs) {
