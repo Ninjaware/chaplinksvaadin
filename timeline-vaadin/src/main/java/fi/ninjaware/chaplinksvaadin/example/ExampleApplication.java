@@ -1,7 +1,5 @@
 package fi.ninjaware.chaplinksvaadin.example;
 
-import com.google.gwt.i18n.client.DateTimeFormat;
-import com.google.gwt.visualization.client.DataTable;
 import com.vaadin.Application;
 import com.vaadin.data.Item;
 import com.vaadin.data.util.IndexedContainer;
@@ -9,10 +7,13 @@ import com.vaadin.terminal.Sizeable;
 import com.vaadin.ui.Button;
 import com.vaadin.ui.Window;
 import fi.ninjaware.chaplinksvaadin.Timeline;
-import fi.ninjaware.chaplinksvaadin.Timeline.PropertyId;
+import fi.ninjaware.chaplinksvaadin.Timeline.EventType;
+import fi.ninjaware.chaplinksvaadin.Timeline.EventFields;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.GregorianCalendar;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * The Application's "main" class
@@ -20,6 +21,9 @@ import java.util.GregorianCalendar;
 @SuppressWarnings("serial")
 public class ExampleApplication extends Application {
 
+    private static final Logger log = LoggerFactory
+            .getLogger(ExampleApplication.class);
+    
     private Window window;
 
     @Override
@@ -37,46 +41,56 @@ public class ExampleApplication extends Application {
                 tl.setHeight(300, Sizeable.UNITS_PIXELS);
 
                 IndexedContainer c = new IndexedContainer();
-                c.addContainerProperty(PropertyId.START, Date.class, null);
-                c.addContainerProperty(PropertyId.END, Date.class, null);
-                c.addContainerProperty(PropertyId.CAPTION, String.class, null);
+                c.addContainerProperty(EventFields.START, Date.class, null);
+                c.addContainerProperty(EventFields.END, Date.class, null);
+                c.addContainerProperty(EventFields.CONTENT, String.class, null);
+                c.addContainerProperty(EventFields.TYPE, EventType.class, null);
 
                 Calendar cal = GregorianCalendar.getInstance();
-                cal.set(2014, 1, 5);
-                
+                cal.set(2014, 0, 5);
+
                 {
                     Item item = c.getItem(c.addItem());
-                    item.getItemProperty(PropertyId.START)
+                    item.getItemProperty(EventFields.START)
                             .setValue(cal.getTime());
                     cal.add(Calendar.DAY_OF_MONTH, 4);
-                    item.getItemProperty(PropertyId.END)
+                    item.getItemProperty(EventFields.END)
                             .setValue(cal.getTime());
-                    item.getItemProperty(PropertyId.CAPTION)
+                    item.getItemProperty(EventFields.CONTENT)
                             .setValue("Holiday");
                 }
-                
+
                 {
                     Item item = c.getItem(c.addItem());
                     cal.add(Calendar.DAY_OF_MONTH, -1);
-                    item.getItemProperty(PropertyId.START)
+                    item.getItemProperty(EventFields.START)
                             .setValue(cal.getTime());
                     cal.add(Calendar.DAY_OF_MONTH, 6);
-                    item.getItemProperty(PropertyId.END)
+                    item.getItemProperty(EventFields.END)
                             .setValue(cal.getTime());
-                    item.getItemProperty(PropertyId.CAPTION)
+                    item.getItemProperty(EventFields.CONTENT)
                             .setValue("Something fun");
                 }
-                
+
                 {
                     Item item = c.getItem(c.addItem());
                     cal.add(Calendar.DAY_OF_MONTH, 8);
-                    item.getItemProperty(PropertyId.START)
+                    item.getItemProperty(EventFields.START)
                             .setValue(cal.getTime());
-                    item.getItemProperty(PropertyId.CAPTION)
+                    item.getItemProperty(EventFields.CONTENT)
                             .setValue("Single day event");
+                    item.getItemProperty(EventFields.TYPE)
+                            .setValue(EventType.BOX);
                 }
-                
-                tl.setEventDataSource(c);
+                try {
+                    tl.setEventDataSource(c);
+                } catch (Timeline.EventContainerInvalidException exs) {
+                    log.error("Event container invalid.");
+                    for(Timeline.EventContainerInvalidException ex : 
+                            exs.getCauses()) {
+                        log.error(ex.getMessage());
+                    }
+                }
             }
         });
 

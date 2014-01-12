@@ -12,8 +12,11 @@ import static fi.ninjaware.chaplinksvaadin.gwt.shared.Shared.*;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Date;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -26,95 +29,129 @@ public class Timeline extends AbstractComponent {
     private static final Logger log = LoggerFactory.getLogger(Timeline.class);
 
     /**
-     * Default values for event property Ids.
-     * Details: http://almende.github.io/chap-links-library/js/timeline/doc/
+     * Default values for event property Ids. I'm going to deliberately break
+     * the DRY principle. Find the counterpart in the VTimeline class. Details:
+     * http://almende.github.io/chap-links-library/js/timeline/doc/
      */
-    public enum PropertyId {
+    public enum EventFields {
+
         START,
         END,
-        CAPTION,
+        CONTENT,
         GROUP,
         CLASSNAME,
         EDITABLE,
-        TYPE
+        TYPE;
+
     }
-    
+
     /**
      * Event types. Default type is "range".
      */
     public enum EventType {
+
         BOX,
         RANGE,
         DOT;
-        
+
         /**
          * The value used by the JavaScript library.
+         *
          * @return The enumerable name in lower case.
          */
         public String value() {
             return toString().toLowerCase();
         }
+
+        public static EventType getDefault() {
+            return RANGE;
+        }
     }
 
-    // <editor-fold desc="Property Id's">
-    
     /**
-     * Event start property Id in the <code>events</code> container.
-     * Type: Date
+     * An exception used to indicate invalid properties in the events container.
+     */
+    public static class EventContainerInvalidException extends Exception {
+
+        /**
+         * A collection of exceptions.
+         */
+        private Collection<EventContainerInvalidException> causes = null;
+
+        /**
+         * The simple constructor.
+         *
+         * @param message Exception message.
+         */
+        public EventContainerInvalidException(String message) {
+            this(message, new ArrayList<EventContainerInvalidException>());
+        }
+
+        /**
+         * The collection constructor.
+         *
+         * @param message Exception message.
+         * @param causes A collection of all exceptions that occurred.
+         */
+        EventContainerInvalidException(String message,
+                Collection<EventContainerInvalidException> causes) {
+            super(message);
+            this.causes = causes;
+        }
+
+        public Collection<EventContainerInvalidException> getCauses() {
+            return causes;
+        }
+
+    }
+
+    // <editor-fold desc="Property ids">
+    /**
+     * Event start property id in the <code>events</code> container. Type: Date
      * Required: Yes
      */
-    private Object eventStartPropertyId = PropertyId.START;
+    private Object eventStartPropertyId = EventFields.START;
 
     /**
-     * Event end property Id in the <code>events</code> container. 
-     * Type: Date
+     * Event end property id in the <code>events</code> container. Type: Date
      * Required: No
      */
-    private Object eventEndPropertyId = PropertyId.END;
+    private Object eventEndPropertyId = EventFields.END;
 
     /**
-     * Event caption property Id in the <code>events</code> container. Can be
-     * plain text or HTML.
-     * Type: String
-     * Required: Yes
+     * Event content property id in the <code>events</code> container. Can be
+     * plain text or HTML. Type: String Required: Yes
      */
-    private Object eventCaptionPropertyId = PropertyId.CAPTION;
+    private Object eventContentPropertyId = EventFields.CONTENT;
 
     /**
-     * Event group property Id in the <code>events</code> container. Groups
-     * are used to group events on one line. A vertical axis showing the groups
-     * will be drawn.
-     * Type: String
-     * Required: No
+     * Event group property id in the <code>events</code> container. Groups are
+     * used to group events on one line. A vertical axis showing the groups will
+     * be drawn. Type: String Required: No
      */
-    private Object eventGroupPropertyId = PropertyId.GROUP;
-    
+    private Object eventGroupPropertyId = EventFields.GROUP;
+
     /**
-     * Event CSS class name property Id in the <code>events</code> container. 
-     * Enables custom CSS styles for events.
-     * Type: String
-     * Required: No
+     * Event CSS class name property id in the <code>events</code> container.
+     * Enables custom CSS styles for events. Type: String Required: No
      */
-    private Object eventClassNamePropertyId = PropertyId.CLASSNAME;
-    
+    private Object eventClassNamePropertyId = EventFields.CLASSNAME;
+
     /**
-     * Event editable property Id in the <code>events</code> container. True
-     * means the event can be edited or deleted, false means read-only.
-     * Type: Boolean
-     * Required: No
+     * Event editable property id in the <code>events</code> container. True
+     * means the event can be edited or deleted, false means read-only. Type:
+     * Boolean Required: No
      */
-    private Object eventEditablePropertyId = PropertyId.EDITABLE;
-    
+    private Object eventEditablePropertyId = EventFields.EDITABLE;
+
     /**
-     * Event type property Id in the <code>events</code> container. The default
-     * value can be overridden by the global option "style".
-     * Type: Timeline.EventType
-     * Required: No
+     * Event type property id in the <code>events</code> container. The default
+     * value can be overridden by the global option "style". Type:
+     * Timeline.EventType Required: No
      */
-    private Object eventTypePropertyId = PropertyId.TYPE;
-    
+    private Object eventTypePropertyId = EventFields.TYPE;
+
     // </editor-fold>
-    
     /**
      * Event data container.
      */
@@ -124,6 +161,13 @@ public class Timeline extends AbstractComponent {
      * Serialized events to be sent to the client.
      */
     private final List<String> serializedEvents = new ArrayList<String>();
+
+    /**
+     * The field map of the serialized events. Key = <code>events</code>
+     * container id, Value = enumerable name.
+     */
+    private final Map<Object, String> serializedFields
+            = new LinkedHashMap<Object, String>();
 
     /**
      * True, when the required JavaScript has been loaded.
@@ -141,54 +185,94 @@ public class Timeline extends AbstractComponent {
     }
 
     private void generateSerializedEvents() {
-        if (events != null) {
 
-            boolean eventEndPropertyFound = true;
-            if (!events.getContainerPropertyIds().contains(eventEndPropertyId)) {
-                // Event end date is optional.
-                log.debug("Event end property '{}' not found in the container.",
-                        eventEndPropertyId);
-                eventEndPropertyFound = false;
+        serializedFields.clear();
+
+        // Required fields
+        serializedFields.put(eventStartPropertyId, 
+                EventFields.START.toString());
+        serializedFields.put(eventContentPropertyId, 
+                EventFields.CONTENT.toString());
+
+        // Optional fields
+        Collection<?> propIds = events.getContainerPropertyIds();
+        if (propIds.contains(eventEndPropertyId)) {
+            serializedFields.put(eventEndPropertyId,
+                    EventFields.END.toString());
+        }
+        if (propIds.contains(eventGroupPropertyId)) {
+            serializedFields.put(eventGroupPropertyId,
+                    EventFields.GROUP.toString());
+        }
+        if (propIds.contains(eventClassNamePropertyId)) {
+            serializedFields.put(eventClassNamePropertyId,
+                    EventFields.CLASSNAME.toString());
+        }
+        if (propIds.contains(eventEditablePropertyId)) {
+            serializedFields.put(eventEditablePropertyId,
+                    EventFields.EDITABLE.toString());
+        }
+        if (propIds.contains(eventTypePropertyId)) {
+            serializedFields.put(eventTypePropertyId,
+                    EventFields.TYPE.toString());
+        }
+
+        Set<Object> containerProps = serializedFields.keySet();
+
+        // Iterate the events and add them to the serializedEvents list
+        serializedEvents.clear();
+        for (int i = 0; i < events.size(); i++) {
+            Object id = events.getIdByIndex(i);
+            Item item = events.getItem(id);
+
+            StringBuilder srlzd = new StringBuilder();
+
+            srlzd.append(id).append("|");
+
+            // Event start
+            Date startDate = (Date) item
+                    .getItemProperty(eventStartPropertyId).getValue();
+            if (startDate == null) {
+                log.warn("Event start of item '{}' is null. "
+                        + "Skipping item.", id);
+                continue;
             }
+            srlzd.append(String.valueOf(startDate.getTime()));
 
-            if (validateEventContainer()) {
-                for (int i = 0; i < events.size(); i++) {
-                    Object id = events.getIdByIndex(i);
-                    Item item = events.getItem(id);
+            Iterator<?> propIterator = containerProps.iterator();
+            propIterator.next(); // Start date was already handled.
+            while (propIterator.hasNext()) {
+                Object propertyId = propIterator.next();
+                Object property = item.getItemProperty(propertyId).getValue();
+                Class<?> type = events.getType(propertyId);
 
-                    // Event start.
-                    Date startDate = (Date) item
-                            .getItemProperty(eventStartPropertyId).getValue();
-                    if (startDate == null) {
-                        log.warn("Event start of item '{}' is null. "
-                                + "Skipping item.", id);
-                        continue;
+                srlzd.append("|"); // add delimiter
+
+                if (type.isAssignableFrom(Date.class)) {
+                    Date date = (Date) property;
+                    String strValue = "";
+                    if (date != null) {
+                        strValue = String.valueOf(date.getTime());
                     }
-                    String startStr = String.valueOf(startDate.getTime());
-
-                    // Event end.
-                    String endStr = "";
-                    if (eventEndPropertyFound) {
-                        Date endDate = (Date) item
-                                .getItemProperty(eventEndPropertyId).getValue();
-                        if (endDate != null) {
-                            endStr = String.valueOf(endDate.getTime());
-                        }
-                    }
-
-                    // Caption.
-                    Object capObj = item.getItemProperty(eventCaptionPropertyId)
-                            .getValue();
-                    String caption = (capObj == null) ? "" : capObj.toString();
-
-                    // Group.
-                    // Add to the serialized container.
-                    String serialized = id + "|" + startStr + "|" + endStr + "|"
-                            + caption;
-                    serializedEvents.add(serialized);
+                    srlzd.append(strValue);
+                } else if (type.isAssignableFrom(Boolean.class)) {
+                    Boolean bool = (Boolean) property;
+                    srlzd.append(bool == null ? Boolean.FALSE.toString()
+                            : bool.toString());
+                } else if (type.isAssignableFrom(EventType.class)) {
+                    EventType eventType = (EventType) property;
+                    srlzd.append(eventType == null
+                            ? EventType.getDefault().value()
+                            : eventType.value());
+                } else {
+                    srlzd.append(property == null ? "" : property.toString());
                 }
             }
+
+            // Add the serialized event to the serialized events' list.
+            serializedEvents.add(srlzd.toString());
         }
+
     }
 
     @Override
@@ -200,6 +284,8 @@ public class Timeline extends AbstractComponent {
         target.addAttribute(HEIGHT, getHeight() + "");
         target.addAttribute(HEIGHT_UNITS, UNIT_SYMBOLS[getHeightUnits()]);
 
+        Collection<String> fields = serializedFields.values();
+        target.addAttribute(FIELDS, fields.toArray(new String[fields.size()]));
         target.addVariable(this, EVENTS,
                 serializedEvents.toArray(new String[serializedEvents.size()]));
 
@@ -210,44 +296,72 @@ public class Timeline extends AbstractComponent {
     /**
      * Validate the event container.
      *
-     * @return True, if the container is valid.
+     * @throws
+     * fi.ninjaware.chaplinksvaadin.Timeline.EventContainerInvalidException when
+     * there are one or more problems with the event container.
      */
-    private boolean validateEventContainer() {
+    private void validateEventContainer() throws
+            EventContainerInvalidException {
 
-        boolean eventContainerValid = true;
+        List<EventContainerInvalidException> exceptions
+                = new ArrayList<EventContainerInvalidException>();
 
         Collection<?> propIds = events.getContainerPropertyIds();
         if (!propIds.contains(eventStartPropertyId)) {
-            log.error("Event start property '{}' not found in the container.",
-                    eventStartPropertyId);
-            eventContainerValid = false;
+            String m = "Event start property '%s' not found in the container.";
+            exceptions.add(new EventContainerInvalidException(
+                    String.format(m, eventStartPropertyId)));
 
         } else if (!events.getType(eventStartPropertyId)
                 .isAssignableFrom(Date.class)) {
-            log.error("Event start property '{}' is not assignable from "
-                    + "java.util.Date.", eventStartPropertyId);
-            eventContainerValid = false;
+            String m = "Event start property '%s' is not assignable from %s";
+            exceptions.add(new EventContainerInvalidException(
+                    String.format(m, eventStartPropertyId,
+                            Date.class.getCanonicalName())));
 
         }
 
         if (propIds.contains(eventEndPropertyId)
                 && !events.getType(eventEndPropertyId)
                 .isAssignableFrom(Date.class)) {
-            log.error("Event end property '{}' is not assignable from "
-                    + "java.util.Date.", eventEndPropertyId);
-            eventContainerValid = false;
+            String m = "Event end property '%s' is not assignable from %s";
+            exceptions.add(new EventContainerInvalidException(
+                    String.format(m, eventEndPropertyId,
+                            Date.class.getCanonicalName())));
 
         }
 
-        if (!propIds.contains(eventCaptionPropertyId)) {
-            log.error("Event caption property '{}' not found in the container.",
-                    eventCaptionPropertyId);
-            eventContainerValid = false;
+        if (!propIds.contains(eventContentPropertyId)) {
+            String m = "Event content property '%s' not "
+                    + "found in the container.";
+            exceptions.add(new EventContainerInvalidException(
+                    String.format(m, eventContentPropertyId)));
         }
-        
-        // TODO: Validate the rest of the properties as well.
 
-        return eventContainerValid;
+        if (propIds.contains(eventEditablePropertyId)
+                && !events.getType(eventEditablePropertyId)
+                .isAssignableFrom(Boolean.class)) {
+            String m = "Event editable property '%s' is not assignable from %s";
+            exceptions.add(new EventContainerInvalidException(
+                    String.format(m, eventContentPropertyId,
+                            Boolean.class.getCanonicalName())));
+        }
+
+        if (propIds.contains(eventTypePropertyId)
+                && !events.getType(eventTypePropertyId)
+                .isAssignableFrom(EventType.class)) {
+            String m = "Event type property '%s' is not assignable from %s";
+            exceptions.add(new EventContainerInvalidException(
+                    String.format(m, eventContentPropertyId,
+                            EventType.class.getCanonicalName())));
+        }
+
+        if (!exceptions.isEmpty()) {
+            throw new EventContainerInvalidException(
+                    "Found one or more problems in the event container. "
+                    + "Use getCauses() method to see them.",
+                    exceptions);
+        }
     }
 
     @Override
@@ -270,14 +384,26 @@ public class Timeline extends AbstractComponent {
     }
 
     // <editor-fold desc="Getters and Setters">
-    
     public Container.Indexed getEventDataSource() {
         return events;
     }
-    
-    public void setEventDataSource(Container.Indexed events) {
+
+    /**
+     * Set the event data source.
+     *
+     * @param events The event container.
+     * @throws
+     * fi.ninjaware.chaplinksvaadin.Timeline.EventContainerInvalidException when
+     * the container properties are invalid.
+     */
+    public void setEventDataSource(Container.Indexed events)
+            throws EventContainerInvalidException {
         this.events = events;
-        generateSerializedEvents();
+        if (this.events != null) {
+            validateEventContainer();
+            generateSerializedEvents();
+        }
+
         requestRepaint();
     }
 
@@ -307,19 +433,19 @@ public class Timeline extends AbstractComponent {
         requestRepaint();
     }
 
-    public Object getEventCaptionPropertyId() {
-        return eventCaptionPropertyId;
+    public Object getEventContentPropertyId() {
+        return eventContentPropertyId;
     }
 
-    public void setEventCaptionPropertyId(Object eventCaptionPropertyId) {
-        if (eventCaptionPropertyId == null) {
+    public void setEventContentPropertyId(Object eventContentPropertyId) {
+        if (eventContentPropertyId == null) {
             throw new NullPointerException("Property can't be null");
         }
 
-        this.eventCaptionPropertyId = eventCaptionPropertyId;
+        this.eventContentPropertyId = eventContentPropertyId;
         requestRepaint();
     }
-    
+
     public Object getEventGroupPropertyId() {
         return eventGroupPropertyId;
     }
@@ -328,7 +454,7 @@ public class Timeline extends AbstractComponent {
         if (eventGroupPropertyId == null) {
             throw new NullPointerException("Property can't be null");
         }
-        
+
         this.eventGroupPropertyId = eventGroupPropertyId;
         requestRepaint();
     }
@@ -338,10 +464,10 @@ public class Timeline extends AbstractComponent {
     }
 
     public void setEventClassNamePropertyId(Object eventClassNamePropertyId) {
-        if(eventClassNamePropertyId == null) {
+        if (eventClassNamePropertyId == null) {
             throw new NullPointerException("Property can't be null");
         }
-        
+
         this.eventClassNamePropertyId = eventClassNamePropertyId;
         requestRepaint();
     }
@@ -351,10 +477,10 @@ public class Timeline extends AbstractComponent {
     }
 
     public void setEventEditablePropertyId(Object eventEditablePropertyId) {
-        if(eventEditablePropertyId == null) {
+        if (eventEditablePropertyId == null) {
             throw new NullPointerException("Property can't be null");
         }
-        
+
         this.eventEditablePropertyId = eventEditablePropertyId;
         requestRepaint();
     }
@@ -364,15 +490,13 @@ public class Timeline extends AbstractComponent {
     }
 
     public void setEventTypePropertyId(Object eventTypePropertyId) {
-        if(eventTypePropertyId == null) {
+        if (eventTypePropertyId == null) {
             throw new NullPointerException("Property can't be null");
         }
-        
+
         this.eventTypePropertyId = eventTypePropertyId;
         requestRepaint();
     }
 
     // </editor-fold>
-
-    
 }

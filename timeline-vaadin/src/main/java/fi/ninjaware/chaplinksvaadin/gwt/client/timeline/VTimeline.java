@@ -5,7 +5,6 @@ import com.vaadin.terminal.gwt.client.ApplicationConnection;
 import com.vaadin.terminal.gwt.client.Paintable;
 import com.vaadin.terminal.gwt.client.UIDL;
 import com.google.gwt.i18n.client.DateTimeFormat;
-import com.google.gwt.visualization.client.AbstractDataTable;
 import com.google.gwt.visualization.client.AbstractDataTable.ColumnType;
 import com.google.gwt.visualization.client.DataTable;
 import com.google.gwt.visualization.client.VisualizationUtils;
@@ -19,6 +18,32 @@ public class VTimeline extends Timeline implements Paintable {
      * Set the CSS class name to allow styling.
      */
     public static final String CLASSNAME = "v-chaplinks-timeline";
+
+    /**
+     * Event property ids. I'm going to deliberately break the DRY principle.
+     * Find the counterpart in the Timeline class. Details:
+     * http://almende.github.io/chap-links-library/js/timeline/doc/
+     */
+    private enum EventFields {
+
+        START("start", ColumnType.DATE),
+        END("end", ColumnType.DATE),
+        CONTENT("content", ColumnType.STRING),
+        GROUP("group", ColumnType.STRING),
+        CLASSNAME("className", ColumnType.STRING),
+        EDITABLE("editable", ColumnType.BOOLEAN),
+        TYPE("type", ColumnType.STRING);
+
+        EventFields(String jsId, ColumnType type) {
+            this.jsId = jsId;
+            this.type = type;
+        }
+
+        final String jsId;
+
+        final ColumnType type;
+
+    }
 
     /**
      * The client side widget identifier
@@ -54,21 +79,7 @@ public class VTimeline extends Timeline implements Paintable {
 
     private void init() {
         DateTimeFormat dtf = DateTimeFormat.getFormat("yyyy-MM-dd");
-        DataTable data = DataTable.create();
-        data.addColumn(DataTable.ColumnType.DATETIME, "start");
-        data.addColumn(DataTable.ColumnType.DATETIME, "end");
-        data.addColumn(DataTable.ColumnType.STRING, "content");
-
-        // fill the table with some data
-        data.addRows(1);
-        data.setValue(0, 0, dtf.parse("2014-01-02"));
-        data.setValue(0, 1, dtf.parse("2014-01-04"));
-        data.setValue(0, 2, "Conversation");
-        data.setValue(1, 0, dtf.parse("2012-08-28"));
-        data.setValue(1, 2, "Memo");
-        data.setValue(2, 0, dtf.parse("2012-09-02"));
-        data.setValue(2, 2, "Phone Call");
-
+        
         Options options = Timeline.Options.create();
         options.setStyle(Timeline.Options.STYLE.BOX);
         options.setStart(dtf.parse("2014-01-01"));
@@ -87,7 +98,7 @@ public class VTimeline extends Timeline implements Paintable {
         options.setZoomMin(1000L * 60L * 60L * 24L); // one day in milliseconds
         options.setZoomMax(1000L * 60L * 60L * 24L * 31L * 3L);  // about three months in milliseconds
 
-        draw(data, options);
+        draw(null, options);
     }
 
     /**
@@ -124,14 +135,12 @@ public class VTimeline extends Timeline implements Paintable {
         // Events
         String[] events = uidl.getStringArrayVariable(EVENTS);
         if (events.length > 0) {
+            String[] fields = uidl.getStringArrayAttribute(FIELDS);
             DataTable dt = DataTable.create();
-            dt.addColumn(ColumnType.DATE, "start");
-            dt.addColumn(ColumnType.DATE, "end");
-            dt.addColumn(ColumnType.STRING, "content");
-            dt.addColumn(ColumnType.STRING, "group");
-            dt.addColumn(ColumnType.STRING, "className");
-            dt.addColumn(ColumnType.BOOLEAN, "editable");
-            dt.addColumn(ColumnType.STRING, "type");
+            for (String field : fields) {
+                EventFields eventField = EventFields.valueOf(field);
+                dt.addColumn(eventField.type, eventField.jsId);
+            }
 
             dt.addRows(events.length);
 
@@ -139,17 +148,21 @@ public class VTimeline extends Timeline implements Paintable {
             for (int i = 0; i < events.length; i++) {
                 String[] event = events[i].split("\\|");
 
-                // Iterate the event fields
-                for (int j = 0; j < event.length; j++) {
-                    ColumnType type = dt.getColumnType(j);
-                    if (type.equals(ColumnType.DATE)) {
-                        dt.setValue(i, j, new Date(Long.parseLong(event[j])));
-                    } else if (type.equals(ColumnType.BOOLEAN)) {
-                        dt.setValue(i, j, Boolean.parseBoolean(event[j]));
-                    } else {
-                        dt.setValue(j, j, event[j]);
+                int dtCol = 0;
+                // Iterate the event fields. Ignore the first field (=id).
+                for (int j = 1; j < event.length; j++) {
+                    ColumnType type = dt.getColumnType(dtCol);
+                    if (!event[j].isEmpty()) {
+                        if (type.equals(ColumnType.DATE)) {
+                            dt.setValue(i, dtCol, new Date(Long.parseLong(event[j])));
+                        } else if (type.equals(ColumnType.BOOLEAN)) {
+                            dt.setValue(i, dtCol, Boolean.parseBoolean(event[j]));
+                        } else {
+                            dt.setValue(i, dtCol, event[j]);
+                        }
                     }
 
+                    dtCol++;
                 }
             }
 
