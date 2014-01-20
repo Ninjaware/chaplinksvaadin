@@ -7,7 +7,6 @@ import com.google.gwt.dom.client.Element;
 import com.vaadin.terminal.gwt.client.ApplicationConnection;
 import com.vaadin.terminal.gwt.client.Paintable;
 import com.vaadin.terminal.gwt.client.UIDL;
-import com.google.gwt.i18n.client.DateTimeFormat;
 import com.google.gwt.json.client.JSONArray;
 import com.google.gwt.json.client.JSONParser;
 import com.google.gwt.user.client.DOM;
@@ -82,6 +81,16 @@ public class VTimeline extends Timeline implements Paintable {
     private TimelineAddHandler addHandler;
 
     /**
+     * The timeline options. Options contain most of the timeline settings.
+     */
+    private final Options options;
+
+    /**
+     * Current timeline data.
+     */
+    private DataTable data;
+
+    /**
      * The constructor should first call super() to initialize the component and
      * then handle any initialization relevant to Vaadin.
      */
@@ -96,36 +105,32 @@ public class VTimeline extends Timeline implements Paintable {
             @Override
             public void run() {
                 VConsole.log("Google Visualization JavaScript loaded");
-                client.updateVariable(paintableId, JS_INITIALIZED, true, true);
-                init();
+                client.updateVariable(paintableId, JS_INITIALIZED.v, 
+                        true, true);
             }
 
         }, Timeline.PACKAGE);
 
+        options = getDefaultOptions();
     }
 
-    private void init() {
-        DateTimeFormat dtf = DateTimeFormat.getFormat("yyyy-MM-dd");
+    /**
+     * Initialize the default options.
+     *
+     * @return The default options.
+     */
+    private Options getDefaultOptions() {
+        Options defaultOptions = Timeline.Options.create();
+        defaultOptions.setHeight("100%"); // don't touch
+        defaultOptions.setWidth("100%"); // don't touch
+        
+        // TODO: Adjust the default settings below.
+        defaultOptions.setShowCustomTime(true);
 
-        Options options = Timeline.Options.create();
-        options.setStyle(Timeline.Options.STYLE.BOX);
-        options.setStart(dtf.parse("2014-01-01"));
-        options.setEnd(dtf.parse("2014-01-11"));
-        options.setHeight("100%");
-        options.setWidth("100%");
-        options.setEditable(true);
-        options.setShowCustomTime(true);
-        options.setShowNavigation(true);
-        options.setAxisOnTop(true);
-        // options.setShowMajorLabels(false);
-        // options.setShowMinorLabels(false);
+        defaultOptions.setZoomMin(1000L * 60L * 60L * 24L); // one day in milliseconds
+        defaultOptions.setZoomMax(1000L * 60L * 60L * 24L * 31L * 3L);  // about three months in milliseconds
 
-        options.setMin(dtf.parse("2013-12-24"));         // lower limit of visible range
-        options.setMax(dtf.parse("2014-01-31"));         // upper limit of visible range
-        options.setZoomMin(1000L * 60L * 60L * 24L); // one day in milliseconds
-        options.setZoomMax(1000L * 60L * 60L * 24L * 31L * 3L);  // about three months in milliseconds
-
-        draw(null, options);
+        return defaultOptions;
     }
 
     /**
@@ -139,11 +144,11 @@ public class VTimeline extends Timeline implements Paintable {
         // This call should be made first. 
         // It handles sizes, captions, tooltips, etc. automatically.
         if (client.updateComponent(this, uidl, true)) {
-            // If client.updateComponent returns true there has been no changes and we
-            // do not need to update anything.
+            // If client.updateComponent returns true there has been no changes 
+            // and we do not need to update anything.
             return;
         }
-
+        
         // Save reference to server connection object to be able to send
         // user interaction later
         this.client = client;
@@ -151,22 +156,50 @@ public class VTimeline extends Timeline implements Paintable {
         // Save the client side identifier (paintable id) for the widget
         paintableId = uidl.getId();
 
-        String width = uidl.getStringAttribute(WIDTH);
-        String width_units = uidl.getStringAttribute(WIDTH_UNITS);
+        String width = uidl.getStringAttribute(WIDTH.v);
+        String width_units = uidl.getStringAttribute(WIDTH_UNITS.v);
         setWidth(width + width_units);
 
-        String height = uidl.getStringAttribute(HEIGHT);
-        String height_units = uidl.getStringAttribute(HEIGHT_UNITS);
+        String height = uidl.getStringAttribute(HEIGHT.v);
+        String height_units = uidl.getStringAttribute(HEIGHT_UNITS.v);
         setHeight(height + height_units);
 
-        immediate = uidl.getBooleanAttribute(IMMEDIATE);
-
+        immediate = uidl.getBooleanAttribute(IMMEDIATE.v);
+        options.setEditable(uidl.getBooleanAttribute(EDITABLE.v));
+        options.setAnimate(uidl.getBooleanAttribute(ANIMATE.v));
+        options.setAxisOnTop(uidl.getBooleanAttribute(AXISONTOP.v));
+        options.setShowNavigation(uidl.getBooleanAttribute(NAVIGATION.v));
+        String styleName = uidl.getStringAttribute(STYLE.v);
+        try {
+            Options.STYLE style = Options.STYLE.valueOf(styleName);
+            options.setStyle(style);
+        } catch (IllegalArgumentException ex) {
+            VConsole.error("No such style: " + styleName);
+        }
+        
+        if(uidl.hasAttribute(VIEWPORT_START.v)) {
+            long msecs = uidl.getLongAttribute(VIEWPORT_START.v);
+            options.setStart(new Date(msecs));
+        }
+        if(uidl.hasAttribute(VIEWPORT_END.v)) {
+            long msecs = uidl.getLongAttribute(VIEWPORT_END.v);
+            options.setEnd(new Date(msecs));
+        }
+        if(uidl.hasAttribute(TIMELINE_START.v)) {
+            long msecs = uidl.getLongAttribute(TIMELINE_START.v);
+            options.setMin(new Date(msecs));
+        }
+        if(uidl.hasAttribute(TIMELINE_END.v)) {
+            long msecs = uidl.getLongAttribute(TIMELINE_END.v);
+            options.setMax(new Date(msecs));
+        }
+        
         // Listener info
         if (addHandler == null) {
             addAddHandler(addHandler = new TimelineAddHandler());
         }
         // Handlers cannot be removed, so we have to enable/disable it.
-        addHandler.setEnabled(uidl.getBooleanAttribute(HAS_ADDLISTENERS));
+        addHandler.setEnabled(uidl.getBooleanAttribute(HAS_ADDLISTENERS.v));
 
         // Icons and icon positions
         Set<String> attributeNames = uidl.getAttributeNames();
@@ -174,29 +207,28 @@ public class VTimeline extends Timeline implements Paintable {
         Map<String, AlignmentInfo> iconAlignments
                 = new HashMap<String, AlignmentInfo>();
         for (String attributeName : attributeNames) {
-            if (attributeName.startsWith(ICON_PREFIX)) {
-                String id = attributeName.substring(ICON_PREFIX.length());
-                String icon = uidl.getStringAttribute(ICON_PREFIX + id);
+            if (attributeName.startsWith(ICON_PREFIX.v)) {
+                String id = attributeName.substring(ICON_PREFIX.v.length());
+                String icon = uidl.getStringAttribute(ICON_PREFIX.v + id);
 
                 icons.put(id, icon);
-            } else if (attributeName.startsWith(ICONALIGN_PREFIX)) {
-                String id = attributeName.substring(ICONALIGN_PREFIX.length());
-                int alignBits = uidl.getIntAttribute(ICONALIGN_PREFIX + id);
+            } else if (attributeName.startsWith(ICONALIGN_PREFIX.v)) {
+                String id = attributeName.substring(ICONALIGN_PREFIX
+                        .v.length());
+                int alignBits = uidl.getIntAttribute(ICONALIGN_PREFIX.v + id);
 
                 iconAlignments.put(id, new AlignmentInfo(alignBits));
             }
         }
 
         // Events
-        String[] events = uidl.getStringArrayVariable(EVENTS);
+        String[] events = uidl.getStringArrayVariable(EVENTS.v);
         if (events.length > 0) {
-            String[] fields = uidl.getStringArrayAttribute(FIELDS);
-            DataTable dt = generateData(fields, events, icons, iconAlignments);
-            setData(dt);
+            String[] fields = uidl.getStringArrayAttribute(FIELDS.v);
+            data = generateData(fields, events, icons, iconAlignments);
         }
-
-        redraw();
-
+        
+        draw(data, options);
     }
 
     /**
@@ -327,11 +359,11 @@ public class VTimeline extends Timeline implements Paintable {
             if (!enabled) {
                 return;
             }
-            
+
             // Find the new event.
             int index = getEventCount() - 1;
             VTimelineEvent newEvent = (VTimelineEvent) getItem(index).cast();
-            client.updateVariable(paintableId, NEW_EVENT + index,
+            client.updateVariable(paintableId, NEW_EVENT.v + index,
                     newEvent.getSerialized(), immediate);
         }
 

@@ -82,6 +82,21 @@ public class Timeline extends AbstractComponent {
         }
 
     }
+    
+    /**
+     * Default event style. Yes, it's confusing. This is pretty much the same
+     * thing as EventType, but there's no "range" option.
+     */
+    public enum EventStyle {
+
+        BOX,
+        DOT;
+
+        public static EventStyle getDefault() {
+            return BOX;
+        }
+
+    }
 
     /**
      * An exception used to indicate invalid properties in the events container.
@@ -225,6 +240,56 @@ public class Timeline extends AbstractComponent {
     private final Map<Object, Alignment> eventIconAlignments
             = new LinkedHashMap<Object, Alignment>();
 
+    /**
+     * Set to true to allow add, modify and delete operations on the timeline.
+     * Default: true.
+     */
+    private boolean editable = true;
+    
+    /**
+     * Set to true to enable timeline animations.
+     * Default: false.
+     */
+    private boolean animate = false;
+    
+    /**
+     * The start date of the timeline viewport.
+     */
+    private Date viewportStart;
+    
+    /**
+     * The end date of the timeline viewport.
+     */
+    private Date viewportEnd;
+    
+    /**
+     * The start date of the entire timeline.
+     */
+    private Date timelineStart;
+    
+    /**
+     * The end date of the entire timeline.
+     */
+    private Date timelineEnd;
+    
+    /**
+     * The default style for events.
+     * Default: BOX.
+     */
+    private EventStyle style = EventStyle.getDefault();
+    
+    /**
+     * Set to true to display the time axis on the top instead of bottom.
+     * Default: false.
+     */
+    private boolean axisOnTop = false;
+    
+    /**
+     * Set to true to show navigation controls on the timeline.
+     * Default: true.
+     */
+    private boolean showNavigation = true;
+    
     /**
      * True, when the required JavaScript has been loaded.
      */
@@ -372,30 +437,48 @@ public class Timeline extends AbstractComponent {
     public void paintContent(PaintTarget target) throws PaintException {
         super.paintContent(target);
 
-        target.addAttribute(WIDTH, getWidth() + "");
-        target.addAttribute(WIDTH_UNITS, UNIT_SYMBOLS[getWidthUnits()]);
-        target.addAttribute(HEIGHT, getHeight() + "");
-        target.addAttribute(HEIGHT_UNITS, UNIT_SYMBOLS[getHeightUnits()]);
-        target.addAttribute(IMMEDIATE, isImmediate());
-
+        target.addAttribute(WIDTH.v, getWidth() + "");
+        target.addAttribute(WIDTH_UNITS.v, UNIT_SYMBOLS[getWidthUnits()]);
+        target.addAttribute(HEIGHT.v, getHeight() + "");
+        target.addAttribute(HEIGHT_UNITS.v, UNIT_SYMBOLS[getHeightUnits()]);
+        target.addAttribute(IMMEDIATE.v, isImmediate());
+        target.addAttribute(EDITABLE.v, isEditable());
+        target.addAttribute(ANIMATE.v, isAnimate());
+        target.addAttribute(STYLE.v, getEventStyle().toString());
+        target.addAttribute(AXISONTOP.v, axisOnTop);
+        target.addAttribute(NAVIGATION.v, showNavigation);
+        if(getViewportStart() != null) {
+            target.addAttribute(VIEWPORT_START.v, getViewportStart().getTime());
+        }
+        if(getViewportEnd() != null) {
+            target.addAttribute(VIEWPORT_END.v, getViewportEnd().getTime());
+        }
+        if(getTimelineStart() != null) {
+            target.addAttribute(TIMELINE_START.v, getTimelineStart().getTime());
+        }
+        if(getTimelineEnd() != null) {
+            target.addAttribute(TIMELINE_END.v, getTimelineEnd().getTime());
+        }
+        
         // Listener info.
-        target.addAttribute(HAS_ADDLISTENERS,
+        target.addAttribute(HAS_ADDLISTENERS.v,
                 !getListeners(EventAddEvent.class).isEmpty());
 
         Collection<String> fields = serializedFields.values();
-        target.addAttribute(FIELDS, fields.toArray(new String[fields.size()]));
+        target.addAttribute(FIELDS.v, 
+                fields.toArray(new String[fields.size()]));
 
         for (Object id : eventIcons.keySet()) {
-            target.addAttribute(ICON_PREFIX + id, eventIcons.get(id));
+            target.addAttribute(ICON_PREFIX.v + id, eventIcons.get(id));
         }
 
         for (Object id : eventIconAlignments.keySet()) {
-            target.addAttribute(ICONALIGN_PREFIX + id,
+            target.addAttribute(ICONALIGN_PREFIX.v + id,
                     eventIconAlignments.get(id).getBitMask());
         }
 
         // TODO: Variable or attribute?
-        target.addVariable(this, EVENTS,
+        target.addVariable(this, EVENTS.v,
                 serializedEvents.toArray(new String[serializedEvents.size()]));
 
         serializedEvents.clear();
@@ -482,15 +565,15 @@ public class Timeline extends AbstractComponent {
 
     @Override
     public void changeVariables(Object source, Map<String, Object> variables) {
-        if (variables.containsKey(JS_INITIALIZED)) {
+        if (variables.containsKey(JS_INITIALIZED.v)) {
             log.debug("Google Visualization JavaScript loaded.");
-            js_initialized = (Boolean) variables.get(JS_INITIALIZED);
+            js_initialized = (Boolean) variables.get(JS_INITIALIZED.v);
 
             // TODO: paint (or not?).
         }
 
         for (String key : variables.keySet()) {
-            if (key.startsWith(NEW_EVENT)) {
+            if (key.startsWith(NEW_EVENT.v)) {
                 log.debug("Received new event.");
                 String[] eventFields = (String[]) variables.get(key);
                 TimelineEvent timelineEvent = createEventFromFields(eventFields);
@@ -536,7 +619,7 @@ public class Timeline extends AbstractComponent {
      * @param listener The event add listener.
      */
     public void addEventAddListener(EventAddListener listener) {
-        addListener(EVENT_ADD_EVENT_ID, EventAddEvent.class, listener,
+        addListener(EVENT_ADD_EVENT_ID.v, EventAddEvent.class, listener,
                 EventAddEvent.EVENT_ADD_METHOD);
     }
 
@@ -546,7 +629,7 @@ public class Timeline extends AbstractComponent {
      * @param listener The event add listener.
      */
     public void removeEventAddListener(EventAddListener listener) {
-        removeListener(EVENT_ADD_EVENT_ID, EventAddEvent.class, listener);
+        removeListener(EVENT_ADD_EVENT_ID.v, EventAddEvent.class, listener);
     }
 
     // </editor-fold>
@@ -674,6 +757,7 @@ public class Timeline extends AbstractComponent {
             throw new NullPointerException("Property can't be null");
         }
         this.eventIconPropertyId = eventIconPropertyId;
+        requestRepaint();
     }
 
     public Object getEventIconAlignmentPropertyId() {
@@ -685,8 +769,90 @@ public class Timeline extends AbstractComponent {
             throw new NullPointerException("Property can't be null");
         }
         this.eventIconAlignmentPropertyId = eventIconAlignmentPropertyId;
+        requestRepaint();
     }
 
+    public boolean isEditable() {
+        return editable;
+    }
+
+    public void setEditable(boolean editable) {
+        this.editable = editable;
+        requestRepaint();
+    }
+
+    public boolean isAnimate() {
+        return animate;
+    }
+
+    public void setAnimate(boolean animate) {
+        this.animate = animate;
+        requestRepaint();
+    }
+
+    public Date getViewportStart() {
+        return viewportStart;
+    }
+
+    public void setViewportStart(Date viewportStart) {
+        this.viewportStart = viewportStart;
+        requestRepaint();
+    }
+
+    public Date getViewportEnd() {
+        return viewportEnd;
+    }
+
+    public void setViewportEnd(Date viewportEnd) {
+        this.viewportEnd = viewportEnd;
+        requestRepaint();
+    }
+
+    public Date getTimelineStart() {
+        return timelineStart;
+    }
+
+    public void setTimelineStart(Date timelineStart) {
+        this.timelineStart = timelineStart;
+        requestRepaint();
+    }
+
+    public Date getTimelineEnd() {
+        return timelineEnd;
+    }
+
+    public void setTimelineEnd(Date timelineEnd) {
+        this.timelineEnd = timelineEnd;
+        requestRepaint();
+    }
+
+    public EventStyle getEventStyle() {
+        return style;
+    }
+
+    public void setEventStyle(EventStyle style) {
+        this.style = style;
+        requestRepaint();
+    }
+
+    public boolean isAxisOnTop() {
+        return axisOnTop;
+    }
+
+    public void setAxisOnTop(boolean axisOnTop) {
+        this.axisOnTop = axisOnTop;
+        requestRepaint();
+    }
+
+    public boolean isShowNavigation() {
+        return showNavigation;
+    }
+
+    public void setShowNavigation(boolean showNavigation) {
+        this.showNavigation = showNavigation;
+        requestRepaint();
+    }
+    
     // </editor-fold>
     // <editor-fold desc="Listener interfaces and events">
     /**

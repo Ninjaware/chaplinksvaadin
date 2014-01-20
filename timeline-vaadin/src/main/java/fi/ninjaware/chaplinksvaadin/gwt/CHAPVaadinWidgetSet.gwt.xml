@@ -16,6 +16,10 @@
     <!-- <inherits name='com.google.gwt.user.theme.chrome.Chrome'/> -->
     <!-- <inherits name='com.google.gwt.user.theme.dark.Dark'/>     -->
     
+    <!-- Explicitly include client and shared packages. -->
+    <source path="client" />
+    <source path="shared" />
+    
 	<!-- Widgetset default theme -->
 	<!-- This is relative to widgetset_directory/public -->	
 	<stylesheet src="timeline/styles.css"/>

@@ -3,36 +3,43 @@ package fi.ninjaware.chaplinksvaadin.gwt.shared;
 import java.io.Serializable;
 
 /**
+ * Shared indices for server and client.
  *
  * @author miku
  */
-public class Shared implements Serializable {
+public enum Shared implements Serializable {
 
-    public static final String WIDTH = "width";
+    WIDTH,
+    WIDTH_UNITS,
+    HEIGHT,
+    HEIGHT_UNITS,
+    IMMEDIATE,
+    EDITABLE,
+    ANIMATE,
+    VIEWPORT_START,
+    VIEWPORT_END,
+    TIMELINE_START,
+    TIMELINE_END,
+    STYLE,
+    AXISONTOP,
+    NAVIGATION,
+    JS_INITIALIZED,
+    EVENTS,
+    NEW_EVENT,
+    FIELDS,
+    HAS_ADDLISTENERS,
+    ICON_PREFIX("icon-"),
+    ICONALIGN_PREFIX("iconpos-"),
+    EVENT_ADD_EVENT_ID;
 
-    public static final String WIDTH_UNITS = "width_units";
+    private Shared() {
+        v = toString();
+    }
 
-    public static final String HEIGHT = "height";
+    private Shared(String value) {
+        v = value;
+    }
 
-    public static final String HEIGHT_UNITS = "height_units";
-    
-    public static final String IMMEDIATE = "immediate";
-
-    public static final String JS_INITIALIZED = "js_initialized";
-
-    public static final String EVENTS = "events";
-
-    public static final String NEW_EVENT = "newevent";
-
-    public static final String FIELDS = "fields";
-
-    public static final String HAS_ADDLISTENERS = "has_addlisteners";
-
-    public static final String ICON_PREFIX = "icon-";
-
-    public static final String ICONALIGN_PREFIX = "iconpos-";
-
-    // Listener event IDs
-    public static final String EVENT_ADD_EVENT_ID = "eventadd";
+    public final String v;
 
 }
