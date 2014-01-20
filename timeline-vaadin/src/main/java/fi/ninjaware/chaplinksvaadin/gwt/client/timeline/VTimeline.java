@@ -1,11 +1,15 @@
 package fi.ninjaware.chaplinksvaadin.gwt.client.timeline;
 
 import com.chap.links.client.Timeline;
+import com.chap.links.client.events.AddHandler;
+import com.google.gwt.core.client.JavaScriptObject;
 import com.google.gwt.dom.client.Element;
 import com.vaadin.terminal.gwt.client.ApplicationConnection;
 import com.vaadin.terminal.gwt.client.Paintable;
 import com.vaadin.terminal.gwt.client.UIDL;
 import com.google.gwt.i18n.client.DateTimeFormat;
+import com.google.gwt.json.client.JSONArray;
+import com.google.gwt.json.client.JSONParser;
 import com.google.gwt.user.client.DOM;
 import com.google.gwt.visualization.client.AbstractDataTable.ColumnType;
 import com.google.gwt.visualization.client.DataTable;
@@ -66,6 +70,11 @@ public class VTimeline extends Timeline implements Paintable {
      * Reference to the server connection object.
      */
     ApplicationConnection client;
+    
+    /**
+     * A handler that forwards add events to the server side.
+     */
+    private TimelineAddHandler addHandler;
 
     /**
      * The constructor should first call super() to initialize the component and
@@ -144,6 +153,13 @@ public class VTimeline extends Timeline implements Paintable {
         String height_units = uidl.getStringAttribute(HEIGHT_UNITS);
         setHeight(height + height_units);
 
+        // Listener info
+        if(addHandler == null) {
+            addAddHandler(addHandler = new TimelineAddHandler());
+        }
+        // Handlers cannot be removed, so we have to enable/disable it.
+        addHandler.setEnabled(uidl.getBooleanAttribute(HAS_ADDLISTENERS));
+        
         // Icons and icon positions
         Set<String> attributeNames = uidl.getAttributeNames();
         Map<String, String> icons = new HashMap<String, String>();
@@ -202,23 +218,24 @@ public class VTimeline extends Timeline implements Paintable {
 
         // Iterate the events
         for (int i = 0; i < events.length; i++) {
-            String[] event = events[i].split("\\|");
+            JSONArray event = JSONParser.parseStrict(events[i]).isArray();
 
             int dtCol = 0;
 
-            String id = event[0];
+            String id = event.get(0).isString().stringValue();
 
             // Iterate the event fields. Ignore the first field (=id).
-            for (int j = 1; j < event.length; j++) {
+            for (int j = 1; j < event.size(); j++) {
                 ColumnType type = dt.getColumnType(dtCol);
 
-                if (!event[j].isEmpty()) {
+                String value = event.get(j).isString().stringValue();
+                if (!value.isEmpty()) {
                     if (type.equals(ColumnType.DATE)) {
-                        dt.setValue(i, dtCol, new Date(Long.parseLong(event[j])));
+                        dt.setValue(i, dtCol, new Date(Long.parseLong(value)));
                     } else if (type.equals(ColumnType.BOOLEAN)) {
-                        dt.setValue(i, dtCol, Boolean.parseBoolean(event[j]));
+                        dt.setValue(i, dtCol, Boolean.parseBoolean(value));
                     } else {
-                        dt.setValue(i, dtCol, event[j]);
+                        dt.setValue(i, dtCol, value);
                     }
                 }
 
@@ -279,5 +296,41 @@ public class VTimeline extends Timeline implements Paintable {
 
         return dt;
     }
+    
+    /**
+     * Get the number of events on the timeline.
+     * @return The number of events.
+     */
+    public int getEventCount() {
+        return getEventCountNative(getJso());
+    }
+    
+    private native int getEventCountNative(JavaScriptObject jso) /*-{
+        return jso.items.length;
+    }-*/;
 
+    class TimelineAddHandler extends AddHandler {
+
+        private boolean enabled;
+        
+        @Override
+        public void onAdd(AddEvent event) {
+            if(!enabled) return;
+            
+            // Find the new event.
+            int size = getEventCount();
+            VTimelineEvent newEvent = (VTimelineEvent) getItem(size-1).cast();
+            client.updateVariable(paintableId, NEW_EVENT, 
+                    newEvent.getSerialized(), true);
+        }
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+    }
 }

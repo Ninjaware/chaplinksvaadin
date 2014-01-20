@@ -3,6 +3,8 @@
 	<!-- Inherit DefaultWidgetSet -->
 	<inherits name="com.vaadin.terminal.gwt.DefaultWidgetSet" />
     
+    <inherits name="com.google.gwt.json.JSON" />
+    
     <!-- Inherit CHAP Links Timeline and GWT Visualization. -->
     <inherits name="com.google.gwt.visualization.Visualization" />
     <inherits name="com.chap.links.Timeline" />

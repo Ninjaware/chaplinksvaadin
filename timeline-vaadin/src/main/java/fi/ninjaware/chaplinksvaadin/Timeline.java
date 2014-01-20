@@ -7,10 +7,14 @@ import fi.ninjaware.chaplinksvaadin.gwt.client.timeline.VTimeline;
 import com.vaadin.terminal.PaintException;
 import com.vaadin.terminal.PaintTarget;
 import com.vaadin.terminal.Resource;
+import com.vaadin.terminal.gwt.server.JsonPaintTarget;
 import com.vaadin.ui.AbstractComponent;
 import com.vaadin.ui.Alignment;
 import com.vaadin.ui.ClientWidget;
+import com.vaadin.ui.Component;
 import static fi.ninjaware.chaplinksvaadin.gwt.shared.Shared.*;
+import java.io.Serializable;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Date;
@@ -76,6 +80,7 @@ public class Timeline extends AbstractComponent {
         public static EventType getDefault() {
             return RANGE;
         }
+
     }
 
     /**
@@ -117,53 +122,64 @@ public class Timeline extends AbstractComponent {
 
     // <editor-fold desc="Property ids">
     /**
-     * Event start property id in the <code>events</code> container. Type: Date
+     * Event start property id in the <code>events</code> container.
+     * Type: Date
      * Required: Yes
      */
     private Object eventStartPropertyId = EventFields.START;
 
     /**
-     * Event end property id in the <code>events</code> container. Type: Date
+     * Event end property id in the <code>events</code> container.
+     * Type: Date
      * Required: No
      */
     private Object eventEndPropertyId = EventFields.END;
 
     /**
      * Event content property id in the <code>events</code> container. Can be
-     * plain text or HTML. Type: String Required: Yes
+     * plain text or HTML.
+     * Type: String
+     * Required: Yes
      */
     private Object eventContentPropertyId = EventFields.CONTENT;
 
     /**
      * Event group property id in the <code>events</code> container. Groups are
      * used to group events on one line. A vertical axis showing the groups will
-     * be drawn. Type: String Required: No
+     * be drawn.
+     * Type: String
+     * Required: No
      */
     private Object eventGroupPropertyId = EventFields.GROUP;
 
     /**
      * Event CSS class name property id in the <code>events</code> container.
-     * Enables custom CSS styles for events. Type: String Required: No
+     * Enables custom CSS styles for events.
+     * Type: String
+     * Required: No
      */
     private Object eventClassNamePropertyId = EventFields.CLASSNAME;
 
     /**
      * Event editable property id in the <code>events</code> container. True
-     * means the event can be edited or deleted, false means read-only. Type:
-     * Boolean Required: No
+     * means the event can be edited or deleted, false means read-only.
+     * Type: Boolean
+     * Required: No
      */
     private Object eventEditablePropertyId = EventFields.EDITABLE;
 
     /**
      * Event type property id in the <code>events</code> container. The default
-     * value can be overridden by the global option "style". Type:
-     * Timeline.EventType Required: No
+     * value can be overridden by the global option "style".
+     * Type: Timeline.EventType
+     * Required: No
      */
     private Object eventTypePropertyId = EventFields.TYPE;
 
     /**
-     * Event icon property id in the <code>events</code> container. Type:
-     * com.vaadin.terminal.Resource Required: No
+     * Event icon property id in the <code>events</code> container.
+     * Type: com.vaadin.terminal.Resource
+     * Required: No
      */
     private Object eventIconPropertyId = EventFields.ICON;
 
@@ -171,8 +187,9 @@ public class Timeline extends AbstractComponent {
      * Event icon alignment property id in the <code>events</code> container. If
      * the container has <code>eventIconPropertyId</code> property, but not the
      * <code>eventIconAlignmentPropertyId</code> property, the default value of
-     * icon alignment will be Alignment.TOP_CENTER. Type:
-     * com.vaadin.ui.Alignment Required: No
+     * icon alignment will be Alignment.TOP_CENTER.
+     * Type: com.vaadin.ui.Alignment
+     * Required: No
      */
     private Object eventIconAlignmentPropertyId = EventFields.ICON_ALIGNMENT;
 
@@ -273,8 +290,12 @@ public class Timeline extends AbstractComponent {
             Item item = events.getItem(id);
 
             StringBuilder srlzd = new StringBuilder();
+            srlzd.append("[");
 
-            srlzd.append(id).append("|");
+            srlzd.append("\"")
+                    .append(JsonPaintTarget.escapeJSON(id.toString()))
+                    .append("\"")
+                    .append(",");
 
             // Event start
             Date startDate = (Date) item
@@ -284,7 +305,9 @@ public class Timeline extends AbstractComponent {
                         + "Skipping item.", id);
                 continue;
             }
-            srlzd.append(String.valueOf(startDate.getTime()));
+            srlzd.append("\"")
+                    .append(String.valueOf(startDate.getTime()))
+                    .append("\"");
 
             Iterator<?> propIterator = containerProps.iterator();
             propIterator.next(); // Start date was already handled.
@@ -293,7 +316,8 @@ public class Timeline extends AbstractComponent {
                 Object property = item.getItemProperty(propertyId).getValue();
                 Class<?> type = events.getType(propertyId);
 
-                srlzd.append("|"); // add delimiter
+                srlzd.append(",") // add delimiter
+                        .append("\"");
 
                 if (type.isAssignableFrom(Date.class)) {
                     Date date = (Date) property;
@@ -312,9 +336,10 @@ public class Timeline extends AbstractComponent {
                             ? EventType.getDefault().value()
                             : eventType.value());
                 } else {
-                    // TODO: Escape the string. It could contain the delimiter character.
-                    srlzd.append(property == null ? "" : property.toString());
+                    String value = property == null ? "" : property.toString();
+                    srlzd.append(JsonPaintTarget.escapeJSON(value));
                 }
+                srlzd.append("\"");
             }
 
             // Icons and icon alignments
@@ -325,7 +350,7 @@ public class Timeline extends AbstractComponent {
                 if (icon != null) {
                     eventIcons.put(id, icon);
                 }
-            } 
+            }
             if (iconAlignmentFieldExists) {
                 Alignment alignment = (Alignment) item
                         .getItemProperty(eventIconAlignmentPropertyId)
@@ -334,6 +359,8 @@ public class Timeline extends AbstractComponent {
                     eventIconAlignments.put(id, alignment);
                 }
             }
+
+            srlzd.append("]");
 
             // Add the serialized event to the serialized events' list.
             serializedEvents.add(srlzd.toString());
@@ -350,10 +377,12 @@ public class Timeline extends AbstractComponent {
         target.addAttribute(HEIGHT, getHeight() + "");
         target.addAttribute(HEIGHT_UNITS, UNIT_SYMBOLS[getHeightUnits()]);
 
+        // Listener info.
+        target.addAttribute(HAS_ADDLISTENERS,
+                !getListeners(EventAddEvent.class).isEmpty());
+
         Collection<String> fields = serializedFields.values();
         target.addAttribute(FIELDS, fields.toArray(new String[fields.size()]));
-        target.addVariable(this, EVENTS,
-                serializedEvents.toArray(new String[serializedEvents.size()]));
 
         for (Object id : eventIcons.keySet()) {
             target.addAttribute(ICON_PREFIX + id, eventIcons.get(id));
@@ -363,6 +392,10 @@ public class Timeline extends AbstractComponent {
             target.addAttribute(ICONALIGN_PREFIX + id,
                     eventIconAlignments.get(id).getBitMask());
         }
+
+        // TODO: Variable or attribute?
+        target.addVariable(this, EVENTS,
+                serializedEvents.toArray(new String[serializedEvents.size()]));
 
         serializedEvents.clear();
         eventIcons.clear();
@@ -407,17 +440,17 @@ public class Timeline extends AbstractComponent {
         propertyFieldMap.put(eventEditablePropertyId, EventFields.EDITABLE);
         propertyFieldMap.put(eventTypePropertyId, EventFields.TYPE);
         propertyFieldMap.put(eventIconPropertyId, EventFields.ICON);
-        propertyFieldMap.put(eventIconAlignmentPropertyId, 
+        propertyFieldMap.put(eventIconAlignmentPropertyId,
                 EventFields.ICON_ALIGNMENT);
 
-        for(Object propertyId : propertyFieldMap.keySet()) {
+        for (Object propertyId : propertyFieldMap.keySet()) {
             try {
                 validateProperty(propertyId, propertyFieldMap.get(propertyId));
-            } catch(EventContainerInvalidException ex) {
+            } catch (EventContainerInvalidException ex) {
                 exceptions.add(ex);
             }
         }
-        
+
         if (!exceptions.isEmpty()) {
             throw new EventContainerInvalidException(
                     "Found one or more problems in the event container. "
@@ -447,8 +480,7 @@ public class Timeline extends AbstractComponent {
     }
 
     @Override
-    public void changeVariables(Object source, Map<String, Object> variables
-    ) {
+    public void changeVariables(Object source, Map<String, Object> variables) {
         if (variables.containsKey(JS_INITIALIZED)) {
             log.debug("Google Visualization JavaScript loaded.");
             js_initialized = (Boolean) variables.get(JS_INITIALIZED);
@@ -456,6 +488,33 @@ public class Timeline extends AbstractComponent {
             // TODO: paint (or not?).
         }
 
+        if (variables.containsKey(NEW_EVENT)) {
+            log.debug("Received new event.");
+            String[] eventFields = (String[]) variables.get(NEW_EVENT);
+            TimelineEvent timelineEvent = createEventFromFields(eventFields);
+            fireEvent(new EventAddEvent(this, timelineEvent));
+        }
+
+    }
+
+    /**
+     * Create a TimelineEvent from eventFields received from the client side.
+     *
+     * @param eventFields A 3 or 4 cell String array containing the event
+     * fields.
+     * @return A new TimelineEvent.
+     */
+    private TimelineEvent createEventFromFields(String[] eventFields) {
+        TimelineEvent event = new TimelineEvent();
+
+        event.setStart(new Date(Long.parseLong(eventFields[0])));
+        event.setEnd(new Date(Long.parseLong(eventFields[1])));
+        event.setContent(eventFields[2]);
+        if (eventFields.length == 4) {
+            event.setGroup(eventFields[3]);
+        }
+
+        return event;
     }
 
     @Override
@@ -466,6 +525,28 @@ public class Timeline extends AbstractComponent {
         }
     }
 
+    // <editor-fold desc="Listener methods">
+    /**
+     * Adds a new event add listener to the timeline. An event add listener is
+     * called when a user adds a new event on the client side.
+     *
+     * @param listener The event add listener.
+     */
+    public void addEventAddListener(EventAddListener listener) {
+        addListener(EVENT_ADD_EVENT_ID, EventAddEvent.class, listener,
+                EventAddEvent.EVENT_ADD_METHOD);
+    }
+
+    /**
+     * Removes a event add listener from the timeline.
+     *
+     * @param listener The event add listener.
+     */
+    public void removeEventAddListener(EventAddListener listener) {
+        removeListener(EVENT_ADD_EVENT_ID, EventAddEvent.class, listener);
+    }
+
+    // </editor-fold>
     // <editor-fold desc="Getters and Setters">
     public Container.Indexed getEventDataSource() {
         return events;
@@ -603,5 +684,54 @@ public class Timeline extends AbstractComponent {
         this.eventIconAlignmentPropertyId = eventIconAlignmentPropertyId;
     }
 
+    // </editor-fold>
+    // <editor-fold desc="Listener interfaces and events">
+    /**
+     * Interface for the listener for adding events. The eventAdded method is
+     * called when a user adds a new event on the client side.
+     *
+     * @author miku
+     */
+    public static interface EventAddListener extends Serializable {
+
+        /**
+         * Called when a user adds a new event.
+         *
+         * @param event The event add event.
+         */
+        public void eventAdded(EventAddEvent event);
+
+    }
+
+    /**
+     * The event add event fired when a user adds a new event.
+     */
+    public static class EventAddEvent extends Event {
+
+        private static final Method EVENT_ADD_METHOD;
+
+        static {
+            try {
+                EVENT_ADD_METHOD = EventAddListener.class
+                        .getDeclaredMethod("eventAdded",
+                                new Class[]{EventAddEvent.class});
+            } catch (final java.lang.NoSuchMethodException e) {
+                // This should never happen
+                throw new java.lang.RuntimeException(e);
+            }
+        }
+
+        private final TimelineEvent event;
+
+        public EventAddEvent(Component source, TimelineEvent addedEvent) {
+            super(source);
+            event = addedEvent;
+        }
+
+        public TimelineEvent getAddedEvent() {
+            return event;
+        }
+
+    }
     // </editor-fold>
 }

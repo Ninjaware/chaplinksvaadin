@@ -3,7 +3,6 @@ package fi.ninjaware.chaplinksvaadin.example;
 import com.vaadin.Application;
 import com.vaadin.data.Item;
 import com.vaadin.data.util.IndexedContainer;
-import com.vaadin.terminal.ExternalResource;
 import com.vaadin.terminal.Resource;
 import com.vaadin.terminal.Sizeable;
 import com.vaadin.terminal.ThemeResource;
@@ -18,6 +17,7 @@ import java.util.Date;
 import java.util.GregorianCalendar;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.impl.SimpleLogger;
 
 /**
  * The Application's "main" class
@@ -25,8 +25,12 @@ import org.slf4j.LoggerFactory;
 @SuppressWarnings("serial")
 public class ExampleApplication extends Application {
 
-    private static final Logger log = LoggerFactory
-            .getLogger(ExampleApplication.class);
+    private static final Logger log;
+    
+    static {
+        System.setProperty(SimpleLogger.DEFAULT_LOG_LEVEL_KEY, "DEBUG");
+        log = LoggerFactory.getLogger(ExampleApplication.class);
+    }
     
     private Window window;
 
