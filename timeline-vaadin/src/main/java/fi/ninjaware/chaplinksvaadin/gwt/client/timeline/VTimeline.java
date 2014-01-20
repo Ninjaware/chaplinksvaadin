@@ -70,7 +70,12 @@ public class VTimeline extends Timeline implements Paintable {
      * Reference to the server connection object.
      */
     ApplicationConnection client;
-    
+
+    /**
+     * Indicates whether events should be sent to the server immediately.
+     */
+    private boolean immediate;
+
     /**
      * A handler that forwards add events to the server side.
      */
@@ -94,6 +99,7 @@ public class VTimeline extends Timeline implements Paintable {
                 client.updateVariable(paintableId, JS_INITIALIZED, true, true);
                 init();
             }
+
         }, Timeline.PACKAGE);
 
     }
@@ -153,13 +159,15 @@ public class VTimeline extends Timeline implements Paintable {
         String height_units = uidl.getStringAttribute(HEIGHT_UNITS);
         setHeight(height + height_units);
 
+        immediate = uidl.getBooleanAttribute(IMMEDIATE);
+
         // Listener info
-        if(addHandler == null) {
+        if (addHandler == null) {
             addAddHandler(addHandler = new TimelineAddHandler());
         }
         // Handlers cannot be removed, so we have to enable/disable it.
         addHandler.setEnabled(uidl.getBooleanAttribute(HAS_ADDLISTENERS));
-        
+
         // Icons and icon positions
         Set<String> attributeNames = uidl.getAttributeNames();
         Map<String, String> icons = new HashMap<String, String>();
@@ -257,13 +265,13 @@ public class VTimeline extends Timeline implements Paintable {
 
                 StringBuilder style = new StringBuilder();
 
-                if(iconAlign.isLeft() || iconAlign.isHorizontalCenter()) {
+                if (iconAlign.isLeft() || iconAlign.isHorizontalCenter()) {
                     style.append("margin-right: auto;");
                 }
-                if(iconAlign.isRight() || iconAlign.isHorizontalCenter()) {
+                if (iconAlign.isRight() || iconAlign.isHorizontalCenter()) {
                     style.append("margin-left: auto;");
                 }
-                
+
                 style.append("vertical-align: ")
                         .append(iconAlign.getVerticalAlignment())
                         .append(";");
@@ -275,7 +283,7 @@ public class VTimeline extends Timeline implements Paintable {
                 icon.setPropertyString("style", style.toString());
 
                 String value;
-                
+
                 /*
                  I = Icon first
                  C = Text first
@@ -296,32 +304,35 @@ public class VTimeline extends Timeline implements Paintable {
 
         return dt;
     }
-    
+
     /**
      * Get the number of events on the timeline.
+     *
      * @return The number of events.
      */
     public int getEventCount() {
         return getEventCountNative(getJso());
     }
-    
+
     private native int getEventCountNative(JavaScriptObject jso) /*-{
-        return jso.items.length;
-    }-*/;
+     return jso.items.length;
+     }-*/;
 
     class TimelineAddHandler extends AddHandler {
 
         private boolean enabled;
-        
+
         @Override
         public void onAdd(AddEvent event) {
-            if(!enabled) return;
+            if (!enabled) {
+                return;
+            }
             
             // Find the new event.
-            int size = getEventCount();
-            VTimelineEvent newEvent = (VTimelineEvent) getItem(size-1).cast();
-            client.updateVariable(paintableId, NEW_EVENT, 
-                    newEvent.getSerialized(), true);
+            int index = getEventCount() - 1;
+            VTimelineEvent newEvent = (VTimelineEvent) getItem(index).cast();
+            client.updateVariable(paintableId, NEW_EVENT + index,
+                    newEvent.getSerialized(), immediate);
         }
 
         public boolean isEnabled() {

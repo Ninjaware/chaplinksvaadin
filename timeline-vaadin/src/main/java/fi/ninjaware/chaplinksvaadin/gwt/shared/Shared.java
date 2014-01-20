@@ -15,6 +15,8 @@ public class Shared implements Serializable {
     public static final String HEIGHT = "height";
 
     public static final String HEIGHT_UNITS = "height_units";
+    
+    public static final String IMMEDIATE = "immediate";
 
     public static final String JS_INITIALIZED = "js_initialized";
 

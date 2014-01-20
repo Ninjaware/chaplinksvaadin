@@ -376,6 +376,7 @@ public class Timeline extends AbstractComponent {
         target.addAttribute(WIDTH_UNITS, UNIT_SYMBOLS[getWidthUnits()]);
         target.addAttribute(HEIGHT, getHeight() + "");
         target.addAttribute(HEIGHT_UNITS, UNIT_SYMBOLS[getHeightUnits()]);
+        target.addAttribute(IMMEDIATE, isImmediate());
 
         // Listener info.
         target.addAttribute(HAS_ADDLISTENERS,
@@ -433,7 +434,7 @@ public class Timeline extends AbstractComponent {
         }
 
         // Check that all the data types match.
-        Map<Object, EventFields> propertyFieldMap 
+        Map<Object, EventFields> propertyFieldMap
                 = new LinkedHashMap<Object, EventFields>();
         propertyFieldMap.put(eventStartPropertyId, EventFields.START);
         propertyFieldMap.put(eventEndPropertyId, EventFields.END);
@@ -488,11 +489,13 @@ public class Timeline extends AbstractComponent {
             // TODO: paint (or not?).
         }
 
-        if (variables.containsKey(NEW_EVENT)) {
-            log.debug("Received new event.");
-            String[] eventFields = (String[]) variables.get(NEW_EVENT);
-            TimelineEvent timelineEvent = createEventFromFields(eventFields);
-            fireEvent(new EventAddEvent(this, timelineEvent));
+        for (String key : variables.keySet()) {
+            if (key.startsWith(NEW_EVENT)) {
+                log.debug("Received new event.");
+                String[] eventFields = (String[]) variables.get(key);
+                TimelineEvent timelineEvent = createEventFromFields(eventFields);
+                fireEvent(new EventAddEvent(this, timelineEvent));
+            }
         }
 
     }
